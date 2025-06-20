@@ -5,3 +5,7 @@ pydrive
 google-auth
 google-auth-oauthlib
 google-api-python-client
+streamlit
+openai
+pandas
+python-dotenv
