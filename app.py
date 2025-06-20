@@ -3,11 +3,9 @@ import json
 import pandas as pd
 import openai
 import streamlit as st
-from dotenv import load_dotenv
 
-# --- Load ENV ---
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_KEY")
+# --- Load secrets directly from Streamlit ---
+OPENAI_API_KEY = st.secrets["OPENAI_KEY"]
 CACHE_FILE = 'gpt_filename_cache.json'
 EXAMPLES_KEY = 'examples'
 
@@ -110,7 +108,7 @@ def gpt_query(user_query, cache):
         "Given a new filename, split it into the 5 parts as shown. "
         "Return as JSON: {\"parsed\": [...], \"notes\": \"...\"}"
     )
-    client = openai.OpenAI(api_key=OPENAI_KEY)
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
     resp = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -144,7 +142,11 @@ def main():
             st.dataframe(filtered_df, use_container_width=True)
         else:
             with st.spinner("Thinking..."):
-                result = gpt_query(user_query, cache)
+                try:
+                    result = gpt_query(user_query, cache)
+                except Exception as e:
+                    st.error(f"GPT Query Error: {e}")
+                    return
             st.markdown("**GPT says:**")
             st.markdown(result)
 
