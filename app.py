@@ -4,6 +4,12 @@ import pandas as pd
 import openai
 import streamlit as st
 
+# For Drive upload
+import tempfile
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
 # --- Load secrets directly from Streamlit ---
 OPENAI_API_KEY = st.secrets["OPENAI_KEY"]
 CACHE_FILE = 'gpt_filename_cache.json'
@@ -16,6 +22,30 @@ FIELDNAMES = [
     "Dimensions",
     "No. of Colours",
 ]
+
+# ==== GOOGLE DRIVE UPLOAD SETUP ====
+DRIVE_FOLDER_ID = st.secrets.get("JSON_UPLOAD_FOLDER_ID", "")
+creds_dict = st.secrets.get("GOOGLE_CREDENTIALS_JSON", None)
+if creds_dict:
+    creds = Credentials.from_service_account_info(creds_dict)
+
+def upload_json_to_drive(json_data, folder_id):
+    drive_service = build('drive', 'v3', credentials=creds)
+    with tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json") as tmpfile:
+        tmpfile.write(json.dumps(json_data, indent=2))
+        tmpfile.flush()
+        file_metadata = {
+            'name': 'specbot_export.json',
+            'parents': [folder_id]
+        }
+        media = MediaFileUpload(tmpfile.name, mimetype='application/json')
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        os.unlink(tmpfile.name)
+    return file.get('id')
 
 def load_cache():
     if os.path.exists(CACHE_FILE):
@@ -106,7 +136,7 @@ def gpt_query(user_query, cache):
         "Here are examples:\n"
         f"{context_examples}\n"
         "Given a new filename, split it into the 5 parts as shown. "
-        "Return as JSON: {\"parsed\": [...], \"notes\": \"...\"}"
+        "Return as JSON: {{\"parsed\": [...], \"notes\": \"...\"}}"
     )
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
     try:
@@ -139,6 +169,30 @@ def gpt_query(user_query, cache):
 def main():
     st.set_page_config(page_title="SpecBot", page_icon="📦", layout="wide")
     st.title("📦 Smart SpecBot")
+
+    # === JSON GENERATOR/EXPORTER UI AT THE TOP ===
+    st.subheader("📤 Generate JSON from Table & Upload to Google Drive")
+    cache, df = load_cache_df()
+    exportable_rows = df.to_dict(orient="records")
+    json_str = json.dumps(exportable_rows, indent=2)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.download_button(
+            label="⬇️ Download Table as JSON",
+            data=json_str,
+            file_name="specbot_export.json",
+            mime="application/json"
+        )
+    with col2:
+        if st.button("⬆️ Upload JSON to Google Drive"):
+            if creds_dict and DRIVE_FOLDER_ID:
+                with st.spinner("Uploading JSON to Drive..."):
+                    file_id = upload_json_to_drive(exportable_rows, DRIVE_FOLDER_ID)
+                st.success(f"JSON uploaded! [View in Drive](https://drive.google.com/file/d/{file_id}/view)")
+            else:
+                st.warning("Google Drive credentials or folder not set in Streamlit secrets.")
+
     st.write(
         "All filenames must be in the format:\n"
         "`ItemCode_Brand_Product+Variant_Dimensions_NoOfColours.ext`\n\n"
@@ -147,7 +201,6 @@ def main():
         "- Only the first four underscores are delimiters."
     )
 
-    cache, df = load_cache_df()
     user_query = st.text_input(
         "Ask a question (e.g., Show me all Dettol files above 8COL, or explain 3103159_Dettol_Soap_Cool_Menthol_96X135MM_9COL.pdf):", "")
 
@@ -192,7 +245,6 @@ def main():
             if view_url:
                 if fname.lower().endswith('.pdf'):
                     st.markdown(f"[View PDF in Drive]({view_url})", unsafe_allow_html=True)
-                    # Embed preview if possible
                     preview_url = view_url.replace('/view?usp=drivesdk', '/preview')
                     st.components.v1.iframe(preview_url, height=500)
                 elif fname.lower().endswith(('.png', '.jpg', '.jpeg')):
