@@ -109,16 +109,32 @@ def gpt_query(user_query, cache):
         "Return as JSON: {\"parsed\": [...], \"notes\": \"...\"}"
     )
     client = openai.OpenAI(api_key=OPENAI_API_KEY)
-    resp = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": user_query}
-        ],
-        max_tokens=256,
-        temperature=0
-    )
-    return resp.choices[0].message.content
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_query}
+            ],
+            max_tokens=256,
+            temperature=0
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        # Fallback to gpt-3.5-turbo
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_query}
+                ],
+                max_tokens=256,
+                temperature=0
+            )
+            return resp.choices[0].message.content
+        except Exception as ee:
+            return f"OpenAI API Error: {e}\nFallback Error: {ee}"
 
 def main():
     st.set_page_config(page_title="SpecBot", page_icon="📦", layout="wide")
