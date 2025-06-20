@@ -1,0 +1,5 @@
+.env
+credentials.json
+token.pickle
+drive_rename_log.json
+gpt_filename_cache.json
